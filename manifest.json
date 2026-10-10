@@ -1,0 +1,9 @@
+{
+  "id": "syncthing-meld",
+  "name": "Meld Syncthing Conflicts",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Open all Syncthing conflicts in the vault as Meld tabs, then choose which conflict files to delete.",
+  "author": "Oskar Kraak",
+  "isDesktopOnly": true
+}

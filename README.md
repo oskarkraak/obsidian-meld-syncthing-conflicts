@@ -1,0 +1,1 @@
+"# obsidian-meld-syncthing-conflicts" 

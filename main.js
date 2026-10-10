@@ -1,11 +1,11 @@
-const { Plugin, Notice, Modal } = require('obsidian');
+const { Plugin, PluginSettingTab, Setting, Notice, Modal } = require('obsidian');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// Full path to meld if it is not on the PATH Obsidian sees
-// (e.g. 'C:\\Program Files\\Meld\\Meld.exe' or '/usr/bin/meld').
-const MELD_CMD = 'meld';
+const DEFAULT_SETTINGS = {
+  meldPath: 'meld',
+};
 
 // Folders never scanned.
 const SKIP_DIRS = new Set(['.git', '.trash', 'node_modules']);
@@ -62,11 +62,11 @@ function sameContent(a, b) {
   }
 }
 
-function runMeld(args) {
+function runMeld(cmd, args) {
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(MELD_CMD, args, { stdio: 'ignore' });
+      child = spawn(cmd, args, { stdio: 'ignore' });
     } catch (e) {
       return resolve({ error: e });
     }
@@ -153,15 +153,60 @@ class SelectDeleteModal extends Modal {
   }
 }
 
-module.exports = class MeldConflicts extends Plugin {
-  onload() {
+class MeldSettingTab extends PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+
+    new Setting(containerEl)
+      .setName('Meld path')
+      .setDesc(
+        'Leave as "meld" if Meld is on your PATH. Otherwise enter the full path to the executable, ' +
+          'for example C:\\Program Files\\Meld\\Meld.exe, /usr/bin/meld or /Applications/Meld.app/Contents/MacOS/Meld.'
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder('meld')
+          .setValue(this.plugin.settings.meldPath)
+          .onChange(async (value) => {
+            this.plugin.settings.meldPath = value;
+            await this.plugin.saveSettings();
+          })
+      );
+  }
+}
+
+module.exports = class SyncthingMeld extends Plugin {
+  async onload() {
     this.running = false;
+    await this.loadSettings();
+
+    this.addSettingTab(new MeldSettingTab(this.app, this));
 
     this.addCommand({
-      id: 'open-all-conflicts-in-meld',
-      name: 'Open all sync conflicts in Meld',
+      id: 'open-conflicts-in-meld',
+      name: 'Open sync conflicts in Meld',
       callback: () => this.resolveAll(),
     });
+  }
+
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
+
+  // Trimmed, surrounding quotes removed, falls back to "meld".
+  meldCommand() {
+    const raw = (this.settings.meldPath || '').trim().replace(/^["']|["']$/g, '');
+    return raw || DEFAULT_SETTINGS.meldPath;
   }
 
   selectToDelete(items) {
@@ -196,10 +241,15 @@ module.exports = class MeldConflicts extends Plugin {
     );
 
     try {
-      const res = await runMeld(args);
+      const cmd = this.meldCommand();
+      const res = await runMeld(cmd, args);
 
       if (res.error) {
-        new Notice(`Could not start Meld (${res.error.message}). Conflict files kept.`, 8000);
+        new Notice(
+          `Could not start Meld (${res.error.message}). Is it installed? ` +
+            'Set its path in the plugin settings. Conflict files kept.',
+          10000
+        );
         return;
       }
 
